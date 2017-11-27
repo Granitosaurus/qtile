@@ -23,12 +23,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from . import base
-from .generic_poll_text import GenPollUrl
+from libqtile.widget import base
+from libqtile.widget.generic_poll_text import GenPollUrl
 import locale
 
 
-class BitcoinTicker(GenPollUrl):
+class CryptoTicker(GenPollUrl):
     """
     A bitcoin ticker widget, data provided by the btc-e.com API. Defaults to
     displaying currency in whatever the current locale is. Examples:
@@ -45,37 +45,27 @@ class BitcoinTicker(GenPollUrl):
         widget.BitcoinTicker(format="BTC: ฿{avg}", source_currency='ltc', currency='btc', round=False)
     """
 
-    QUERY_URL = "https://btc-e.com/api/2/%s_%s/ticker"
+    QUERY_URL = "https://api.coinmarketcap.com/v1/ticker/{from_currency}/?convert={to_currency}"
 
     orientations = base.ORIENTATION_HORIZONTAL
 
     defaults = [
-        ('currency', locale.localeconv()['int_curr_symbol'].strip(),
-            'The currency the value that bitcoin is displayed in'),
-        ('source_currency', 'btc',
-            'The source currency to convert from'),
-        ('round', True, 'whether or not to use locale.currency to round the values'),
-        ('format', 'BTC Buy: {buy}, Sell: {sell}',
-            'Display format, allows buy, sell, high, low, avg, '
-            'vol, vol_cur, last, variables.'),
+        ('to_currency', locale.localeconv()['int_curr_symbol'].strip() or 'usd',
+         'Result currency'),
+        ('from_currency', 'bitcoin', 'The source currency to convert from'),
+        ('format', '{symbol}:{to_price}',
+         'Display format: name, symbol, rank, to_price, price_usd, price_btc, percentage_change_<1h,24h,7d>'),
     ]
 
     def __init__(self, **config):
-        GenPollUrl.__init__(self, **config)
-        self.add_defaults(BitcoinTicker.defaults)
-
-    @property
-    def url(self):
-        return self.QUERY_URL % (self.source_currency.lower(), self.currency.lower())
+        super().__init__(**config)
+        self.add_defaults(self.defaults)
+        self.url = self.QUERY_URL.format(from_currency=self.from_currency.lower(), to_currency=self.to_currency.lower())
 
     def parse(self, body):
-        formatted = {}
-        if 'error' in body and body['error'] == "invalid pair":
-            locale.setlocale(locale.LC_MONETARY, "en_US.UTF-8")
-            self.currency = locale.localeconv()['int_curr_symbol'].strip()
-            body = self.fetch(self.url)
-        for k, v in body['ticker'].items():
-            formatted[k] = v
-            if self.round:
-                formatted[k] = locale.currency(v)
-        return self.format.format(**formatted)
+        body = body[0] if body else {}
+        body['to_currency'] = self.to_currency
+        body['from_currency'] = self.from_currency
+        body['to_price'] = body.get('price_{}'.format(self.to_currency), 'unknown_output_currency')
+        return self.format.format(**body)
+
